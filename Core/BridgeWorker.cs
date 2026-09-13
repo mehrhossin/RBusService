@@ -285,15 +285,14 @@ namespace RBusService.Core
             if (cmd == 0x14 && data.Length >= 7)
             {
                 byte nodeAddr = data[0];
-                byte fwMajor = data[2];   // 0x07
-                byte fwMinor = data[3];   // 0x0E = 14
+                byte fwMajor = data[2];
+                byte fwMinor = data[3];
 
                 string mac;
                 lock (_mapLock)
                 {
                     if (!_addrToMac.TryGetValue(nodeAddr, out mac!))
                     {
-                        // MAC واقعی هنوز نداریم — از bridge+addr می‌سازیم
                         mac = $"RB:{BridgeId}:00:{nodeAddr:X2}";
                         _addrToMac[nodeAddr] = mac;
                     }
@@ -313,6 +312,7 @@ namespace RBusService.Core
                 return;
             }
 
+
             // ══════════════════════════════════════════════════════
             // بقیه cmd‌ها — addr فرستنده از _addrToMac
             // ══════════════════════════════════════════════════════
@@ -322,14 +322,15 @@ namespace RBusService.Core
             switch (cmd)
             {
                 // ── Discovery Response ────────────────────────────
-                case RBusProtocol.CMD_DISCOVERY_RES when data.Length >= 8:
+                case CMD_DISCOVERY_RES when data.Length >= 8:
                     {
-                        // فرمت واقعی از لاگ:
-                        // AA-FF-21-0B - [MAC×6] - [addr] - [has_code] - [fw_maj] - [fw_min] - [CRC]
-                        // data =         0..5      6         7             8          9
-                        string macStr = RBusProtocol.MacStr(data[..6]);
-                        int nodeAddr = data[6];        // ← قبلاً data[7] بود — اشتباه!
-                        bool hasCode = data[7] != 0;   // ← قبلاً data[6] بود — اشتباه!
+                        // AA-FF-21-0B [MAC×6][addr][has_code][fw_maj][fw_min][CRC]
+                        // data:         0..5    6      7        8       9
+                        string macStr = MacStr(data[..6]);
+                        int nodeAddr = data[6];
+                        bool hasCode = data[7] != 0;
+
+                        string fakeMac = $"RB:{BridgeId}:00:{nodeAddr:X2}";
 
                         lock (_mapLock)
                         {
@@ -337,7 +338,11 @@ namespace RBusService.Core
                             if (nodeAddr == 0) _zeroAddrMacs.Add(macStr);
                         }
 
+                        // ✅ MAC ساختگی رو از registry پاک کن
+                        _registry.Remove(fakeMac);
+
                         _registry.UpsertDiscovery(macStr, BridgeId, nodeAddr, hasCode);
+
                         FireEvent("discovery", new()
                         {
                             ["bridge_id"] = BridgeId,
@@ -347,6 +352,7 @@ namespace RBusService.Core
                         });
                         break;
                     }
+
 
                 // ── Address ACK ───────────────────────────────────
                 case RBusProtocol.CMD_ADDRESS_ACK when data.Length >= 7:
