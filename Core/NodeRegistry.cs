@@ -98,13 +98,16 @@ namespace RBusService.Core
             finally { _lock.ExitWriteLock(); }
         }
 
-        public NodeInfo? UpsertStatus(string mac, string bridgeId, int addr,
-            bool inOta, int touchMask, int adc, int fwMajor, int fwMinor)
+        public NodeInfo UpsertStatus(string mac, string bridgeId, int addr,
+     bool inOta, int touchMask, int adc, int fwMajor, int fwMinor)
         {
             _lock.EnterWriteLock();
             try
             {
-                if (!_nodes.TryGetValue(mac, out var n)) return null;
+                // ✅ اگه نبود بساز — دیگه null برنگردون
+                if (!_nodes.TryGetValue(mac, out var n))
+                    _nodes[mac] = n = new NodeInfo { Mac = mac, BridgeId = bridgeId };
+
                 n.BridgeId = bridgeId;
                 n.Addr = addr;
                 n.InOta = inOta;
@@ -113,7 +116,20 @@ namespace RBusService.Core
                 n.FwMajor = fwMajor;
                 n.FwMinor = fwMinor;
                 n.LastSeen = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
+                RecomputeDups();
                 return n;
+            }
+            finally { _lock.ExitWriteLock(); }
+        }
+
+        // ✅ متد جدید برای حذف MAC ساختگی
+        public void Remove(string mac)
+        {
+            _lock.EnterWriteLock();
+            try
+            {
+                if (_nodes.Remove(mac))
+                    RecomputeDups();
             }
             finally { _lock.ExitWriteLock(); }
         }
